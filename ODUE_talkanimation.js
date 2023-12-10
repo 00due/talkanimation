@@ -215,7 +215,7 @@
             talkerId = parseInt(atalkMatch[1]);
         }
 
-        text = text.replace(/\\[ae]talk\[\d+\]/gi, "").replace(/\[(\d+)\]/g, "");
+        text = text.replace(/\\[ae]talk\[\d+\]/gi, "");
         if (talkAnimation) {
             if (animationTimeout) clearTimeout(animationTimeout);
             toggleTalkAnimation(true);
