@@ -1,5 +1,5 @@
 /*:
- * @plugindesc (Ver 1.0) Map sprite talking animation for RPG Maker MV / MZ
+ * @plugindesc (Ver 1.1) Map sprite talking animation for RPG Maker MV / MZ
  * @author ODUE
  * @url https://github.com/00due/talkanimation
  * @target MZ MV
@@ -183,7 +183,7 @@
     Window_Message.prototype.startPause = function() {
         if (talkAnimation && !longAnimation) toggleTalkAnimation(false);
         Window_Message_prototype_startPause.call(this);
-        if (longAnimation && timeoutFrames > 0) {
+        if (talkAnimation && longAnimation && timeoutFrames > 0) {
             if (animationTimeout) clearTimeout(animationTimeout);
             animationTimeout = setTimeout(function() {
                 toggleTalkAnimation(false);
@@ -232,10 +232,8 @@
 
     const Game_Follower_prototype_update = Game_Follower.prototype.update;
     Game_Follower.prototype.update = function() {
-        if (animAllowed) Game_Character.prototype.update.call(this);
-        else Game_Follower_prototype_update.call(this); //If this is called when talking animation is on,
-                                                        //the follower will animate too, if player has animation on.
         if (animAllowed) {
+            Game_Character.prototype.update.call(this);
             if (this._enableSteppingAnimation) this.setStepAnime(true);
             else if (this._canDisable) {
                 this.setStepAnime(false);
@@ -243,6 +241,7 @@
                 animAllowed = false;
             }
         }
+        else Game_Follower_prototype_update.call(this);
     };
     
     Game_Follower.prototype.enableSteppingAnimation = function() {
@@ -264,14 +263,14 @@
     Game_Player.prototype.update = function(sceneActive) {
         _Game_Player_update.call(this, sceneActive);
         if (animAllowed) {
-            
+
             if (this._enableSteppingAnimation) this.setStepAnime(true);
             else if (this._canDisable) {
                 this.setStepAnime(false);
                 this._canDisable = false;
                 animAllowed = false;
             }
-            
+
         }
     };
     
