@@ -1,5 +1,5 @@
 /*:
- * @plugindesc (Ver 1.1) Map sprite talking animation for RPG Maker MV / MZ
+ * @plugindesc (Ver 1.2) Map sprite talking animation for RPG Maker MV / MZ
  * @author ODUE
  * @url https://github.com/00due/talkanimation
  * @target MZ MV
@@ -44,6 +44,11 @@
  * @desc Frames before animation is stopped. Only used if Longer animation is on. 0 = keep playing until textbox is closed.
  * @type number
  * @default 60
+ * @param shortCodes
+ * @text shortened text codes
+ * @desc Allows use of \at and \et for faster use. May conflict with other plugins. Use at your own risk.
+ * @type boolean
+ * @default false
 */
 (() => {
     const parameters = PluginManager.parameters('ODUE_talkanimation');
@@ -51,6 +56,7 @@
     let moveSpeed = parseInt(parameters['moveSpeed']);
     const longAnimation = parameters['animStop'] === 'true';
     const timeoutFrames = parseInt(parameters['timeoutFrames']);
+    const shortCodes = parameters['shortCodes'] === 'true';
 
     let talkAnimation = false;
     let talkAnimMode;
@@ -202,6 +208,10 @@
 
         etalkMatch = text.match(/\\etalk\[(\d+)\]/i);
         atalkMatch = text.match(/\\atalk\[(\d+)\]/i);
+        if (shortCodes) {
+            etalkMatch = text.match(/\\et\[(\d+)\]/i);
+            atalkMatch = text.match(/\\at\[(\d+)\]/i);
+        }
 
         if (etalkMatch) {
             if (animationTimeout) clearTimeout(animationTimeout);
@@ -215,7 +225,8 @@
             talkerId = parseInt(atalkMatch[1]);
         }
 
-        text = text.replace(/\\[ae]talk\[\d+\]/gi, "");
+        if (etalkMatch || atalkMatch) text = text.replace(/\\[ae]talk\[\d+\]/gi, "");
+        if ((etalkMatch || atalkMatch) && shortCodes) text = text.replace(/\\[ae]t\[\d+\]/gi, "");
         if (talkAnimation) {
             if (animationTimeout) clearTimeout(animationTimeout);
             toggleTalkAnimation(true);
