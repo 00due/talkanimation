@@ -1,5 +1,5 @@
 /*:
- * @plugindesc (Ver 1.2) Map sprite talking animation for RPG Maker MV / MZ
+ * @plugindesc (Ver 1.3) Map sprite talking animation for RPG Maker MV / MZ
  * @author ODUE
  * @url https://github.com/00due/talkanimation
  * @target MZ MV
@@ -16,6 +16,10 @@
  * 
  * Compability with VisuMZ_2_MessageLog:
  * - Use VisuMZ_1_MessageCore to  replace \atalk and \etalk with nothing.
+ * 
+ * Known issues:
+ * Game party members may not continue talk animation if the text is paused (using \!).
+ * This will be fixed in the future when I have time.
  * 
  * 
  * Terms of use:
@@ -49,6 +53,11 @@
  * @desc Allows use of \at and \et for faster use. May conflict with other plugins. Use at your own risk.
  * @type boolean
  * @default false
+ * @param subDir
+ * @text directory for talk sprites
+ * @desc If you want to use another directory for talk sprites, put the name of a directory here.
+ * @type string
+ * @default img/characters/
 */
 (() => {
     const parameters = PluginManager.parameters('ODUE_talkanimation');
@@ -57,6 +66,7 @@
     const longAnimation = parameters['animStop'] === 'true';
     const timeoutFrames = parseInt(parameters['timeoutFrames']);
     const shortCodes = parameters['shortCodes'] === 'true';
+    const subDir = parameters['subDir'];
 
     let talkAnimation = false;
     let talkAnimMode;
@@ -88,7 +98,7 @@
                 originalMoveSpeed = $gamePlayer.moveSpeed();
                 partyMember.setMoveSpeed(moveSpeed);
                 talkerFilename = partyMember.characterName();
-                const imageSrc = "img/characters/" + talkerFilename + "[talk].png";
+                const imageSrc = subDir + talkerFilename + "[talk].png";
                 ImageManager.loadCharacter(talkerFilename + "[talk]");
                 loadImage(imageSrc)
                 .then((image) => {
@@ -125,7 +135,7 @@
                     event.setStepAnime(true);
                 }*/
 
-                const imageSrc = "img/characters/" + talkerFilename + "[talk].png";
+                const imageSrc = subDir + talkerFilename + "[talk].png";
                 ImageManager.loadCharacter(talkerFilename + "[talk]");
                 loadImage(imageSrc)
                 .then((image) => {
