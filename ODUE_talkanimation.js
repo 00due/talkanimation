@@ -1,5 +1,5 @@
 /*:
- * @plugindesc (Ver 1.3) Map sprite talking animation for RPG Maker MV / MZ
+ * @plugindesc (Ver 1.4) Map sprite talking animation for RPG Maker MV / MZ
  * @author ODUE
  * @url https://github.com/00due/talkanimation
  * @target MZ MV
@@ -14,12 +14,11 @@
  * In atalk, actor ID 0 means the player. The rest means the party members in order.
  * In etalk, event ID 0 means the event that is currently running.
  * 
+ * Subdirectory setup:
+ * Use folder/ (remember the / character). This will use img/characters/folder/ as the directory.
+ * 
  * Compability with VisuMZ_2_MessageLog:
  * - Use VisuMZ_1_MessageCore to  replace \atalk and \etalk with nothing.
- * 
- * Known issues:
- * Game party members may not continue talk animation if the text is paused (using \!).
- * This will be fixed in the future when I have time.
  * 
  * 
  * Terms of use:
@@ -55,9 +54,9 @@
  * @default false
  * @param subDir
  * @text directory for talk sprites
- * @desc If you want to use another directory for talk sprites, put the name of a directory here.
+ * @desc If you want to use subdirectory for talk sprites, put the name of a directory here.
  * @type string
- * @default img/characters/
+ * @default 
 */
 (() => {
     const parameters = PluginManager.parameters('ODUE_talkanimation');
@@ -77,6 +76,7 @@
     let animAllowed = false; // This is due to compability issues with "Set stepping animation"
     let etalkMatch;
     let atalkMatch;
+    let atalkContinue = false;
 
     let animationTimeout = null;
 
@@ -95,28 +95,37 @@
             const partyMember = talkerId === 0 ? $gamePlayer : $gamePlayer.followers().follower(talkerId - 1);
             talkerIndex = partyMember.characterIndex();
             if (toggle) { 
-                originalMoveSpeed = $gamePlayer.moveSpeed();
-                partyMember.setMoveSpeed(moveSpeed);
-                talkerFilename = partyMember.characterName();
-                const imageSrc = subDir + talkerFilename + "[talk].png";
-                ImageManager.loadCharacter(talkerFilename + "[talk]");
-                loadImage(imageSrc)
-                .then((image) => {
-                    $gameParty.members()[talkerId].setCharacterImage(talkerFilename + "[talk]", talkerIndex);
-                    partyMember.refresh();
+                if (!atalkContinue) {
+                    originalMoveSpeed = $gamePlayer.moveSpeed();
+                    partyMember.setMoveSpeed(moveSpeed);
+                    talkerFilename = partyMember.characterName();
+                    talkerFilename = talkerFilename.replace(/\[talk\]\.png/g, '');
+                    const imageSrc = "img/characters/" + subDir + talkerFilename + "[talk].png";
+                    ImageManager.loadCharacter(subDir + talkerFilename + "[talk]");
+                    loadImage(imageSrc)
+                    .then((image) => {
+                        $gameParty.members()[talkerId].setCharacterImage(subDir + talkerFilename + "[talk]", talkerIndex);
+                        partyMember.refresh();
+                        partyMember.enableSteppingAnimation();
+                    })
+                    .catch((error) => {
+                        console.error("Failed to load image:", error);
+                    });
+                } else {
+                    partyMember.setMoveSpeed(moveSpeed);
                     partyMember.enableSteppingAnimation();
-                })
-                .catch((error) => {
-                    console.error("Failed to load image:", error);
-                });
+                }
                                 
-            }
-            else { 
+            } else { 
                 partyMember.disableSteppingAnimation();
-                partyMember.straighten();
-                $gameParty.members()[talkerId].setCharacterImage(talkerFilename, talkerIndex);
-                partyMember.refresh();
-                partyMember.setMoveSpeed(originalMoveSpeed);
+                talkerFilename = talkerFilename.replace(subDir, '');
+                if (!atalkContinue) {
+                    partyMember.straighten();
+                    if ($gameParty.members()[talkerId])
+                        $gameParty.members()[talkerId].setCharacterImage(talkerFilename, talkerIndex);
+                    partyMember.refresh();
+                    partyMember.setMoveSpeed(originalMoveSpeed);
+                }
                 
             }
         } else if (talkAnimMode === 1) {
@@ -134,12 +143,12 @@
                     event.refresh();
                     event.setStepAnime(true);
                 }*/
-
-                const imageSrc = subDir + talkerFilename + "[talk].png";
-                ImageManager.loadCharacter(talkerFilename + "[talk]");
+                talkerFilename = talkerFilename.replace(/\[talk\]\.png/g, '');
+                const imageSrc = "img/characters/" + subDir + talkerFilename + "[talk].png";
+                ImageManager.loadCharacter(subDir + talkerFilename + "[talk]");
                 loadImage(imageSrc)
                 .then((image) => {
-                    event.setImage(talkerFilename + "[talk]", event.characterIndex());
+                    event.setImage(subDir + talkerFilename + "[talk]", event.characterIndex());
                     event.refresh();
                     event.setStepAnime(true);
                 })
@@ -148,17 +157,20 @@
                 });
             }
             else {
-                event.setStepAnime(false);
-                event.setMoveSpeed(originalMoveSpeed);
-                event.setPattern(1);
-                event.resetPattern();   //I have no idea if this helps with the occassional showing of
-                                        //the walking animation, so I've left it here just in case.
-                event.setImage(talkerFilename, event.characterIndex());
-                event.refresh();
+                if (event) {
+                    event.setStepAnime(false);
+                    event.setMoveSpeed(originalMoveSpeed);
+                    event.setPattern(1);
+                    event.resetPattern();   //I have no idea if this helps with the occassional showing of
+                                            //the walking animation, so I've left it here just in case.
+                    event.setImage(talkerFilename.replace(subDir, ''), event.characterIndex());
+                    event.refresh();
+                }
                 animAllowed = false;
             }
         }
         talkAnimation = toggle;
+        return;
     };
 
     /*const Window_Message_prototype_updateInput = Window_Message.prototype.updateInput;
@@ -197,6 +209,7 @@
 
     const Window_Message_prototype_startPause = Window_Message.prototype.startPause;
     Window_Message.prototype.startPause = function() {
+        if (atalkMatch) atalkContinue = true;
         if (talkAnimation && !longAnimation) toggleTalkAnimation(false);
         Window_Message_prototype_startPause.call(this);
         if (talkAnimation && longAnimation && timeoutFrames > 0) {
@@ -209,6 +222,10 @@
 
     const Window_Message_prototype_terminateMessage = Window_Message.prototype.terminateMessage;
     Window_Message.prototype.terminateMessage = function() {
+        if (atalkContinue) {
+            atalkContinue = false;
+            toggleTalkAnimation(false);
+        }
         if (talkAnimation) toggleTalkAnimation(false);
         Window_Message_prototype_terminateMessage.call(this);
     };
@@ -284,14 +301,14 @@
     Game_Player.prototype.update = function(sceneActive) {
         _Game_Player_update.call(this, sceneActive);
         if (animAllowed) {
-
+            
             if (this._enableSteppingAnimation) this.setStepAnime(true);
             else if (this._canDisable) {
                 this.setStepAnime(false);
                 this._canDisable = false;
                 animAllowed = false;
             }
-
+            
         }
     };
     
