@@ -1,5 +1,5 @@
 /*:
- * @plugindesc (Ver 1.4) Map sprite talking animation for RPG Maker MV / MZ
+ * @plugindesc (Ver 1.5) Map sprite talking animation for RPG Maker MV / MZ
  * @author ODUE
  * @url https://github.com/00due/talkanimation
  * @target MZ MV
@@ -212,6 +212,20 @@
         if (atalkMatch) atalkContinue = true;
         if (talkAnimation && !longAnimation) toggleTalkAnimation(false);
         Window_Message_prototype_startPause.call(this);
+        if (talkAnimation && longAnimation && timeoutFrames > 0) {
+            if (animationTimeout) clearTimeout(animationTimeout);
+            animationTimeout = setTimeout(function() {
+                toggleTalkAnimation(false);
+            }, (timeoutFrames / 60) * 1000);
+        }
+    };
+
+    //Cancel the animation when in 'Show choices' window
+    const Window_ChoiceList_prototype_start = Window_ChoiceList.prototype.start;
+    Window_ChoiceList.prototype.start = function() {
+        if (atalkMatch) atalkContinue = true;
+        if (talkAnimation && !longAnimation) toggleTalkAnimation(false);
+        Window_ChoiceList_prototype_start.call(this);
         if (talkAnimation && longAnimation && timeoutFrames > 0) {
             if (animationTimeout) clearTimeout(animationTimeout);
             animationTimeout = setTimeout(function() {
