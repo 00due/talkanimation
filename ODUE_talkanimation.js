@@ -1,5 +1,5 @@
 /*:
- * @plugindesc (Ver 1.6) Map sprite talking animation for RPG Maker MV / MZ
+ * @plugindesc (Ver 1.6.1) Map sprite talking animation for RPG Maker MV / MZ
  * @author ODUE
  * @url https://github.com/00due/talkanimation
  * @target MZ MV
@@ -191,7 +191,17 @@
                     event.setPattern(1);    //TODO: Try removing this (should do exactly same as resetPattern)
                     event.resetPattern();   //I have no idea if this helps with the occassional showing of
                                             //the walking animation, so I've left it here just in case.
-                    event.setImage(talkerFilename.replace(subDir, ''), event.characterIndex());
+                    
+                    //Check if the event is still the same event
+                    //The reason for so many ORs is because the event name can be different
+                    //and I don't have the slightest fkin clue when it's what.
+                    if (event.characterName() === talkerFilename + "[talk]"
+                    || event.characterName() === subDir + talkerFilename + "[talk]"
+                    || event.characterName() === talkerFilename.replace(subDir, '') + "[talk]"
+                    || event.characterName() === talkerFilename)
+                    {
+                        event.setImage(talkerFilename.replace(subDir, ''), event.characterIndex());
+                    }
                     event.refresh();
                 }
                 animAllowed = false;
