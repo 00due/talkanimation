@@ -8,6 +8,14 @@
 
  After downloading, extract the `ODUE_talkanimation.js` file into `<your project's folder>/js/plugins`
 
+# Upgrading from version 1.5 to later
+ The way \atalk works has been changed. Previously it checked the member position in party, but now it plays the animation based on actor ID.
+ Don't worry, you don't need to update your whole project. You can restore the functionality to how it was previuously:
+
+ Set the parameter "Use party position" as true.
+
+ If you want to change it to the new style without upgrading the whole project, use `\useActorId` in a text and after that, start using actor IDs instead of party member positions.
+
 # Troubleshooting
 
  Please submit your issue into [Github issues](https://github.com/00due/talkanimation/issues).
@@ -21,9 +29,14 @@
 
  Use `\atalk[actorId]` or `\etalk[eventId]` in the message box to start the animation.
 
- In atalk, actor ID 0 means the player. The rest means the party members in order.
-
+ In atalk, actor ID 0 means the player. The rest means the actor ID (set in database).
+ Or if you have "Use party position" on, the ID is the position in the party.
+ For example `\atalk[1]` will animate the first actor after the player in the party.
+ 
  In etalk, event ID 0 means the event that is currently running.
+ 
+ You can also use \usePartyPos and \useActorId to change the behavior of the plugin
+ (see "Use party position" parameter for more info).
 
  Compability with VisuMZ_2_MessageLog:
 
