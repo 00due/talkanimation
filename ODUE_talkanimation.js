@@ -1,5 +1,5 @@
 /*:
- * @plugindesc (Ver 1.7) Map sprite talking animation for RPG Maker MV / MZ
+ * @plugindesc (Ver 1.8) Map sprite talking animation for RPG Maker MV / MZ
  * @author ODUE
  * @url https://github.com/00due/talkanimation
  * @target MZ MV
@@ -42,9 +42,11 @@
  * 
  * @param moveSpeed
  * @text Animation speed
- * @desc Higher number means faster animation. Recommended values are between 1 and 10.
+ * @desc Higher number means faster animation. Recommended values are between 2 and 10.
  * @type number
  * @default 5
+ * @min 2
+ * @max 100
  * 
  * @param animStop
  * @text Longer animation
@@ -112,6 +114,17 @@
 
     let animationTimeout = null;
 
+    // Store all details of last animated character to make sure it is properly erased
+    // before the next one is started.
+    let lastAnimated = {
+        mode: null,
+        id: null,
+        filename: null,
+        index: null,
+        mapId: null,
+        speed: null
+    };
+
     const loadImage = (src) => {
         return new Promise((resolve, reject) => {
           const image = new Image();
@@ -121,106 +134,167 @@
         });
     };
 
+    let getWarningMessage = function(name, type) {
+        return `Talk Animation: Removed extra ${type} from character name "${name}".
+Please report this to the plugin developer (ODUE) if this happens often.
+(Please submit an issue prefereably on GitHub or alternatively to RPG Maker forums. Thank you!)`;
+    };
+
+    let showWarning = function(message) {
+        if (Utils.isOptionValid('test')) console.warn(message);
+    }
+
+    let showError = function(message) {
+        if (Utils.isOptionValid('test')) console.error(message);
+    }
+
     //TODO: Break this function into smaller parts (I am scared just by looking at this function)
-    toggleTalkAnimation = function(toggle) {
+    let toggleTalkAnimation = function(toggle) {
         try {
             animAllowed = true;
+            
+            // A new fix to the same problem with wrong filenames being constructed.
+            // Even this won't really fix the root cause, but it should at least reduce
+            // the chances of it happening (hopefully).
+            const getCleanName = (name) => {
+                if (!name) return "";
+                // 1. Remove [talk] suffix (Note: characterName() does not have .png)
+                let clean = name;
+                while (clean.includes("[talk]")) {
+                    clean = clean.replace("[talk]", "");
+                    showWarning(getWarningMessage(name, "suffix"));
+                }
+                // 2. Remove subDir if the name already starts with it
+                // (This should remove all of them)
+                while (subDir && subDir.length > 0 && clean.startsWith(subDir)) {
+                    clean = clean.substring(subDir.length);
+                    showWarning(getWarningMessage(name, "prefix"));
+                }
+                return clean;
+            };
+
             if (talkAnimMode === 0) {
                 const partyMember = talkerId === 0 ? $gamePlayer : $gamePlayer.followers().follower(talkerId - 1);
+                // Makes sure the game doesn't crash in case the selected character does not exist.
+                if (!partyMember) {
+                    showError("Talk Animation: Follower with ID " + talkerId + " not found.");
+                    return;
+                }
                 talkerIndex = partyMember.characterIndex();
                 if (toggle) { 
-                    if (!atalkContinue) {
-                        originalMoveSpeed = $gamePlayer.moveSpeed();
+                    const currentName = partyMember.characterName();
+                    const isAlreadyTalking = currentName.includes("[talk]");
+
+                    if (!isAlreadyTalking) {
+                        originalMoveSpeed = partyMember.moveSpeed();
                         partyMember.setMoveSpeed(partyMember == $gamePlayer ? moveSpeed : moveSpeed - 1);
-                        talkerFilename = partyMember.characterName();
-                        talkerFilename = talkerFilename.replace(/\[talk\]\.png/g, '');
+                        
+                        talkerFilename = getCleanName(currentName);
+                        
                         const imageSrc = "img/characters/" + subDir + talkerFilename + "[talk].png";
                         ImageManager.loadCharacter(subDir + talkerFilename + "[talk]");
                         loadImage(imageSrc)
                         .then((image) => {
-                            $gameParty.members()[talkerId].setCharacterImage(subDir + talkerFilename + "[talk]", talkerIndex);
-                            partyMember.refresh();
-                            partyMember.enableSteppingAnimation();
+                            if ($gameParty.members()[talkerId]) {
+                                // Fixme: This should still check if the requested image
+                                // actually exists
+                                $gameParty.members()[talkerId].setCharacterImage(subDir + talkerFilename + "[talk]", talkerIndex);
+                                partyMember.refresh();
+                                partyMember.enableSteppingAnimation();
+                            }
                         })
                         .catch((error) => {
-                            console.error("Failed to load image:", error);
+                            showError("Failed to load image: " + error);
                         });
                     } else {
-                        partyMember.setMoveSpeed(partyMember == $gamePlayer ? moveSpeed : moveSpeed - 1);
+                        // Already talking, just ensure animation is on
                         partyMember.enableSteppingAnimation();
                     }
                                     
                 } else { 
                     partyMember.disableSteppingAnimation();
-                    talkerFilename = talkerFilename.replace(subDir, '');
+                    talkerFilename = getCleanName(talkerFilename || partyMember.characterName()); 
+                    
                     if (!atalkContinue) {
                         partyMember.straighten();
-                        if ($gameParty.members()[talkerId])
+                        if ($gameParty.members()[talkerId]) {
+                            // Fixme: This too should check if image exists
                             $gameParty.members()[talkerId].setCharacterImage(talkerFilename, talkerIndex);
-                        partyMember.refresh();
-                        partyMember.setMoveSpeed(originalMoveSpeed);
+                            partyMember.refresh();
+                            if (originalMoveSpeed !== undefined) partyMember.setMoveSpeed(originalMoveSpeed);
+                        }
                     }
-                    
                 }
             } else if (talkAnimMode === 1) {
                 if (talkerId === 0) talkerId = $gameMap._interpreter._eventId;
-                if (!$gameMap.event(talkerId)) return;
-                //Check current map ID
                 const event = $gameMap.event(talkerId);
+                if (!event) {
+                    showError("Talk Animation: Event with ID " + talkerId + " not found.");
+                    return;
+                }
+
                 if (toggle) {
-                    mapOfEvent = $gameMap.mapId();
-                    originalMoveSpeed = event.moveSpeed();
-                    event.setMoveSpeed(moveSpeed);
-                    talkerFilename = event.characterName();
-                    /*const newImage = new Image();
-                    newImage.src = "img/characters/" + talkerFilename + "[talk].png";
-                    newImage.onload = function() {
-                        event.setImage(talkerFilename + "[talk]", event.characterIndex());
-                        event.refresh();
+                    const currentName = event.characterName();
+                    const isAlreadyTalking = currentName.includes("[talk]");
+
+                    if (!isAlreadyTalking) {
+                        mapOfEvent = $gameMap.mapId();
+                        originalMoveSpeed = event.moveSpeed();
+                        event.setMoveSpeed(moveSpeed);
+                        
+                        talkerFilename = getCleanName(currentName);
+
+                        const imageSrc = "img/characters/" + subDir + talkerFilename + "[talk].png";
+                        ImageManager.loadCharacter(subDir + talkerFilename + "[talk]");
+                        loadImage(imageSrc)
+                        .then((image) => {
+                            event.setImage(subDir + talkerFilename + "[talk]", event.characterIndex());
+                            event.refresh();
+                            event.setStepAnime(true);
+                        })
+                        .catch((error) => {
+                            showError("Failed to load image: " + error);
+                        });
+                    } else {
+                        // Already talking, just ensure animation is on
                         event.setStepAnime(true);
-                    }*/
-                    talkerFilename = talkerFilename.replace(/\[talk\]\.png/g, '');
-                    const imageSrc = "img/characters/" + subDir + talkerFilename + "[talk].png";
-                    ImageManager.loadCharacter(subDir + talkerFilename + "[talk]");
-                    loadImage(imageSrc)
-                    .then((image) => {
-                        event.setImage(subDir + talkerFilename + "[talk]", event.characterIndex());
-                        event.refresh();
-                        event.setStepAnime(true);
-                    })
-                    .catch((error) => {
-                        console.error("Failed to load image:", error);
-                    });
+                    }
                 }
                 else {
-                    if (event && mapOfEvent === $gameMap.mapId()) { //Check if the event is still on the same map to prevent crash
+                    if (mapOfEvent === $gameMap.mapId()) {
                         event.setStepAnime(false);
-                        event.setMoveSpeed(originalMoveSpeed);
+                        if (originalMoveSpeed !== undefined) event.setMoveSpeed(originalMoveSpeed);
                         event.setPattern(1);    //TODO: Try removing this (should do exactly same as resetPattern)
                         event.resetPattern();   //I have no idea if this helps with the occassional showing of
                                                 //the walking animation, so I've left it here just in case.
 
-                        //Check if the event is still the same event
-                        //The reason for so many ORs is because the event name can be different
-                        //and I don't have the slightest fkin clue when it's what.
-                        if (event && (event.characterName() === talkerFilename + "[talk]"
-                        || event.characterName() === subDir + talkerFilename + "[talk]"
-                        || event.characterName() === talkerFilename.replace(subDir, '') + "[talk]"
-                        || event.characterName() === talkerFilename))
-                        {
-                            event.setImage(talkerFilename.replace(subDir, ''), event.characterIndex());
+                        const currentName = event.characterName();
+                        const cleanBase = getCleanName(talkerFilename || currentName);
+
+                        if (currentName.includes(cleanBase) && currentName.includes("[talk]")) {
+                            event.setImage(cleanBase, event.characterIndex());
                             event.refresh();
                         }
-                        
                     }
                     animAllowed = false;
                 }
             }
+
+            // Uodate the info of the last character
+            if (toggle) {
+                lastAnimated.mode = talkAnimMode;
+                lastAnimated.id = talkerId;
+                lastAnimated.filename = talkerFilename;
+                lastAnimated.index = talkerIndex;
+                lastAnimated.mapId = mapOfEvent;
+                lastAnimated.speed = originalMoveSpeed;
+            }
+
             talkAnimation = toggle;
             return;
         }
         catch (e) {
-            console.error(e);
+            showError(e);
         }
     };
 
@@ -297,60 +371,89 @@
 
     const Window_Message_prototype_convertEscapeCharacters = Window_Message.prototype.convertEscapeCharacters;
     Window_Message.prototype.convertEscapeCharacters = function(text) {
-        etalkMatch = text.match(/\\etalk\[(\d+)\]/i);
-        atalkMatch = text.match(/\\atalk\[(\d+)\]/i);
-        if (allowMemberTalk) mtalkMatch = text.match(/\\mtalk\[(\d+)\]/i);
-        if (shortCodes) {
-            etalkMatch = text.match(/\\et\[(\d+)\]/i);
-            atalkMatch = text.match(/\\at\[(\d+)\]/i);
-            if (allowMemberTalk) mtalkMatch = text.match(/\\mt\[(\d+)\]/i);
-        }
-        const usePartyPosition = reverseam;
+        const newEtalkMatch = text.match(/\\etalk\[(\d+)\]/i) || (shortCodes && text.match(/\\et\[(\d+)\]/i));
+        const newAtalkMatch = text.match(/\\atalk\[(\d+)\]/i) || (shortCodes && text.match(/\\at\[(\d+)\]/i));
+        const newMtalkMatch = allowMemberTalk ? (text.match(/\\mtalk\[(\d+)\]/i) || (shortCodes && text.match(/\\mt\[(\d+)\]/i))) : null;
 
-        if (etalkMatch || atalkMatch || mtalkMatch) {
+        if (newEtalkMatch || newAtalkMatch || newMtalkMatch) {
+            // Make sure to cancel the previous animation properly
+            // Fixme: This too is a pretty ugly fix, and should be fixed later.
+            // (Who am I kidding, I'm going to just leave this here forever and hope it won't break)
+            if (talkAnimation) {
+                // Temporarily restore old animation state to stop it correctly
+                const oldTalkerId = talkerId;
+                const oldTalkAnimMode = talkAnimMode;
+                const oldTalkerFilename = talkerFilename;
+                const oldTalkerIndex = talkerIndex;
+                const oldMapOfEvent = mapOfEvent;
+                const oldOriginalMoveSpeed = originalMoveSpeed;
+
+                talkerId = lastAnimated.id;
+                talkAnimMode = lastAnimated.mode;
+                talkerFilename = lastAnimated.filename;
+                talkerIndex = lastAnimated.index;
+                mapOfEvent = lastAnimated.mapId;
+                originalMoveSpeed = lastAnimated.speed;
+
+                toggleTalkAnimation(false);
+
+                // Restore for the new animation
+                talkerId = oldTalkerId;
+                talkAnimMode = oldTalkAnimMode;
+                talkerFilename = oldTalkerFilename;
+                talkerIndex = oldTalkerIndex;
+                mapOfEvent = oldMapOfEvent;
+                originalMoveSpeed = oldOriginalMoveSpeed;
+            }
+            
             if (animationTimeout) clearTimeout(animationTimeout);
             talkAnimation = true;
-        }
-        if (etalkMatch) {
-            talkAnimMode = 1; //event
-            talkerId = parseInt(etalkMatch[1]);
-        } else if (atalkMatch) {
-            talkAnimMode = 0; //actor
-            talkerId = parseInt(atalkMatch[1]);
-            //Check for party position (because the animation is going to be played based on party position anyway)
-            if (!usePartyPosition) {
-                for (let i = 0; i < $gameParty.members().length; i++) {
-                    if ($gameParty.members()[i] === $gameActors.actor(talkerId)) {
-                        talkerId = i;
+
+            etalkMatch = newEtalkMatch;
+            atalkMatch = newAtalkMatch;
+            mtalkMatch = newMtalkMatch;
+
+            const usePartyPosition = reverseam;
+
+            if (etalkMatch) {
+                talkAnimMode = 1; //event
+                talkerId = parseInt(etalkMatch[1]);
+            } else if (atalkMatch) {
+                talkAnimMode = 0; //actor
+                talkerId = parseInt(atalkMatch[1]);
+                //Check for party position (because the animation is going to be played based on party position anyway)
+                if (!usePartyPosition) {
+                    for (let i = 0; i < $gameParty.members().length; i++) {
+                        if ($gameParty.members()[i] === $gameActors.actor(talkerId)) {
+                            talkerId = i;
+                            break;
+                        }
+                    }
+                }
+            } else if (mtalkMatch) {
+                talkAnimMode = 0; //actor
+                //Since atalkMatch is checked in other places, we need to set it here (easier than to set mtalkMatch in other places)
+                //I know, this is a bit of a hacky solution, but hey, it works and I'm too lazy to fix it.
+                atalkMatch = mtalkMatch;
+                talkerId = parseInt(mtalkMatch[1]);
+                if (usePartyPosition) {
+                    for (let i = 0; i < $gameParty.members().length; i++) {
+                        if ($gameParty.members()[i] === $gameActors.actor(talkerId)) {
+                            talkerId = i;
+                            break;
+                        }
                     }
                 }
             }
-        } else if (mtalkMatch) {
-            talkAnimMode = 0; //actor
-            //Since atalkMatch is checked in other places, we need to set it here (easier than to set mtalkMatch in other places)
-            //I know, this is a bit of a hacky solution, but hey, it works and I'm too lazy to fix it.
-            atalkMatch = mtalkMatch;
-            talkerId = parseInt(mtalkMatch[1]);
-            if (usePartyPosition) {
-                for (let i = 0; i < $gameParty.members().length; i++) {
-                    if ($gameParty.members()[i] === $gameActors.actor(talkerId)) {
-                        talkerId = i;
-                    }
-                }
-            }
-        }
             
-
-        if (etalkMatch || atalkMatch) text = text.replace(/\\[ae]talk\[\d+\]/gi, "");
-        if (mtalkMatch && allowMemberTalk) text = text.replace(/\\mtalk\[\d+\]/gi, "");
-        if ((etalkMatch || atalkMatch) && shortCodes) text = text.replace(/\\[ae]t\[\d+\]/gi, "");
-        if (mtalkMatch && allowMemberTalk && shortCodes) text = text.replace(/\\mt\[\d+\]/gi, "");
-
-        if (talkAnimation) {
-            if (animationTimeout) clearTimeout(animationTimeout);
             toggleTalkAnimation(true);
         }
-        return Window_Message_prototype_convertEscapeCharacters.call(this, text);
+        
+        // Now, let the original function do its work, but on a cleaned text
+        let processedText = text.replace(/\\[aem]talk\[\d+\]/gi, "");
+        if (shortCodes) processedText = processedText.replace(/\\[aem]t\[\d+\]/gi, "");
+
+        return Window_Message_prototype_convertEscapeCharacters.call(this, processedText);
     };
 
     
