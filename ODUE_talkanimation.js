@@ -1,5 +1,5 @@
 /*:
- * @plugindesc (Ver 1.8) Map sprite talking animation for RPG Maker MV / MZ
+ * @plugindesc (Ver 1.8.1) Map sprite talking animation for RPG Maker MV / MZ
  * @author ODUE
  * @url https://github.com/00due/talkanimation
  * @target MZ MV
@@ -42,11 +42,11 @@
  * 
  * @param moveSpeed
  * @text Animation speed
- * @desc Higher number means faster animation. Recommended values are between 2 and 10.
+ * @desc Higher number means faster animation. Recommended values are between 2 and 8.
  * @type number
  * @default 5
  * @min 2
- * @max 100
+ * max 10
  * 
  * @param animStop
  * @text Longer animation
@@ -207,6 +207,9 @@ Please report this to the plugin developer (ODUE) if this happens often.
                             showError("Failed to load image: " + error);
                         });
                     } else {
+                        // The movement speed doesn't stay for party members, so this shitty way
+                        // will re-apply it.
+                        if (partyMember != $gamePlayer) partyMember.setMoveSpeed(moveSpeed - 1);
                         // Already talking, just ensure animation is on
                         partyMember.enableSteppingAnimation();
                     }
@@ -288,6 +291,14 @@ Please report this to the plugin developer (ODUE) if this happens often.
                 lastAnimated.index = talkerIndex;
                 lastAnimated.mapId = mapOfEvent;
                 lastAnimated.speed = originalMoveSpeed;
+            } else {
+                // After stopping an animation, reset lastAnimated to prevent stale data issues.
+                lastAnimated.mode = null;
+                lastAnimated.id = null;
+                lastAnimated.filename = null;
+                lastAnimated.index = null;
+                lastAnimated.mapId = null;
+                lastAnimated.speed = null;
             }
 
             talkAnimation = toggle;
@@ -371,25 +382,21 @@ Please report this to the plugin developer (ODUE) if this happens often.
 
     const Window_Message_prototype_convertEscapeCharacters = Window_Message.prototype.convertEscapeCharacters;
     Window_Message.prototype.convertEscapeCharacters = function(text) {
-        const newEtalkMatch = text.match(/\\etalk\[(\d+)\]/i) || (shortCodes && text.match(/\\et\[(\d+)\]/i));
-        const newAtalkMatch = text.match(/\\atalk\[(\d+)\]/i) || (shortCodes && text.match(/\\at\[(\d+)\]/i));
-        const newMtalkMatch = allowMemberTalk ? (text.match(/\\mtalk\[(\d+)\]/i) || (shortCodes && text.match(/\\mt\[(\d+)\]/i))) : null;
+        
+        etalkMatch = text.match(/\\etalk\[(\d+)\]/i) || (shortCodes && text.match(/\\et\[(\d+)\]/i));
+        atalkMatch = text.match(/\\atalk\[(\d+)\]/i) || (shortCodes && text.match(/\\at\[(\d+)\]/i));
+        mtalkMatch = allowMemberTalk ? (text.match(/\\mtalk\[(\d+)\]/i) || (shortCodes && text.match(/\\mt\[(\d+)\]/i))) : null;
 
-        if (newEtalkMatch || newAtalkMatch || newMtalkMatch) {
+        if (etalkMatch || atalkMatch || mtalkMatch) {
             // Make sure to cancel the previous animation properly
             // Fixme: This too is a pretty ugly fix, and should be fixed later.
             // (Who am I kidding, I'm going to just leave this here forever and hope it won't break)
-            if (talkAnimation) {
+            if (talkAnimation && lastAnimated.id !== null) {
                 // Temporarily restore old animation state to stop it correctly
-                const oldTalkerId = talkerId;
-                const oldTalkAnimMode = talkAnimMode;
-                const oldTalkerFilename = talkerFilename;
-                const oldTalkerIndex = talkerIndex;
-                const oldMapOfEvent = mapOfEvent;
-                const oldOriginalMoveSpeed = originalMoveSpeed;
+                const currentState = { talkAnimMode, talkerId, talkerFilename, talkerIndex, mapOfEvent, originalMoveSpeed };
 
-                talkerId = lastAnimated.id;
                 talkAnimMode = lastAnimated.mode;
+                talkerId = lastAnimated.id;
                 talkerFilename = lastAnimated.filename;
                 talkerIndex = lastAnimated.index;
                 mapOfEvent = lastAnimated.mapId;
@@ -398,20 +405,11 @@ Please report this to the plugin developer (ODUE) if this happens often.
                 toggleTalkAnimation(false);
 
                 // Restore for the new animation
-                talkerId = oldTalkerId;
-                talkAnimMode = oldTalkAnimMode;
-                talkerFilename = oldTalkerFilename;
-                talkerIndex = oldTalkerIndex;
-                mapOfEvent = oldMapOfEvent;
-                originalMoveSpeed = oldOriginalMoveSpeed;
+                ({ talkAnimMode, talkerId, talkerFilename, talkerIndex, mapOfEvent, originalMoveSpeed } = currentState);
             }
             
             if (animationTimeout) clearTimeout(animationTimeout);
             talkAnimation = true;
-
-            etalkMatch = newEtalkMatch;
-            atalkMatch = newAtalkMatch;
-            mtalkMatch = newMtalkMatch;
 
             const usePartyPosition = reverseam;
 
